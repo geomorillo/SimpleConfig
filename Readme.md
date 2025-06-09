@@ -1,3 +1,7 @@
+## Nombre del formato: **SimpleConfig**
+
+> Un formato de configuración sencillo, humano y flexible.
+
 # Especificación del DSL SimpleConfig
 
 ## 1. Comentarios
@@ -124,6 +128,3 @@ SERVER backend:
 
 ---
 
-## Nombre del formato: **SimpleConfig**
-
-> Un formato de configuración sencillo, humano y flexible.
