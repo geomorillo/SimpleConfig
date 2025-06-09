@@ -9,14 +9,15 @@ namespace SimpleConfig
     {
         public class ConfigBuilder
         {
-            private readonly Config _config = new Config();
+            private readonly Dictionary<string, object> _assignments = new();
+            private readonly List<ConfigBlock> _blocks = new();
 
             public ConfigBuilder AddAssignment(string key, object value)
             {
                 if (!IsValidType(value))
                     throw new ArgumentException("Tipo de dato no soportado: " + value.GetType().Name);
 
-                _config.Assignments[key] = FormatValue(value);
+                _assignments[key] = FormatValue(value);
                 return this;
             }
 
@@ -24,7 +25,7 @@ namespace SimpleConfig
             {
                 var blockBuilder = new BlockBuilder();
                 buildAction(blockBuilder);
-                _config.Blocks.Add(new ConfigBlock
+                _blocks.Add(new ConfigBlock
                 {
                     Name = name,
                     Keys = blockBuilder.GetValues()
@@ -35,18 +36,18 @@ namespace SimpleConfig
             public string Build()
             {
                 var sb = new StringBuilder();
-                SerializeBlock(_config, sb, 0);
+                SerializeBlock(sb, 0);
                 return sb.ToString();
             }
 
-            private void SerializeBlock(Config config, StringBuilder sb, int indentLevel)
+            private void SerializeBlock(StringBuilder sb, int indentLevel)
             {
-                foreach (var assignment in config.Assignments)
+                foreach (var assignment in _assignments)
                 {
                     sb.AppendLine($"{new string(' ', indentLevel * 2)}SET {assignment.Key} = {assignment.Value}");
                 }
 
-                foreach (var block in config.Blocks)
+                foreach (var block in _blocks)
                 {
                     sb.AppendLine($"{new string(' ', indentLevel * 2)}{block.Name}:");
                     SerializeKeyValuePairs(block.Keys, sb, indentLevel + 1);
@@ -73,14 +74,11 @@ namespace SimpleConfig
             {
                 var sb = new StringBuilder();
 
-                // Generar asignaciones
-                foreach (var assignment in _config.Assignments)
+                foreach (var assignment in _assignments)
                 {
                     sb.AppendLine($"SET {assignment.Key} = {assignment.Value}");
                 }
-
-                // Generar bloques
-                foreach (var block in _config.Blocks)
+                foreach (var block in _blocks)
                 {
                     sb.AppendLine($"{block.Name}:");
                     foreach (var key in block.Keys)
@@ -88,9 +86,11 @@ namespace SimpleConfig
                         sb.AppendLine($"  {key.Key} = {key.Value}");
                     }
                 }
-
                 return sb.ToString();
             }
+
+            public Dictionary<string, object> Assignments => _assignments;
+            public List<ConfigBlock> Blocks => _blocks;
 
             public static bool IsValidType(object value)
             {
@@ -107,6 +107,66 @@ namespace SimpleConfig
 
                 return value.ToString().ToLower();
             }
+
+            private static object ParseValue(string value)
+            {
+                if (value.StartsWith("\"") && value.EndsWith("\""))
+                    return value.Substring(1, value.Length - 2);
+
+                if (bool.TryParse(value, out bool boolResult))
+                    return boolResult;
+
+                if (int.TryParse(value, out int intResult))
+                    return intResult;
+
+                if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double doubleResult))
+                    return doubleResult;
+
+                return value;
+            }
+
+            public static Config Parse(string content)
+            {
+                var config = new Config();
+                var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                ConfigBlock currentBlock = null;
+                int currentIndent = 0;
+
+                foreach (var line in lines)
+                {
+                    var trimmedLine = line.Trim();
+                    if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
+
+                    int indent = line.TakeWhile(c => c == ' ').Count() / 2;
+
+                    if (trimmedLine.StartsWith("SET "))
+                    {
+                        var parts = trimmedLine.Substring(4).Split('=');
+                        if (parts.Length == 2)
+                        {
+                            var key = parts[0].Trim();
+                            var value = ParseValue(parts[1].Trim());
+                            config.Assignments[key] = value;
+                        }
+                    }
+                    else if (trimmedLine.EndsWith(":"))
+                    {
+                        currentBlock = new ConfigBlock { Name = trimmedLine.TrimEnd(':') };
+                        config.Blocks.Add(currentBlock);
+                        currentIndent = indent;
+                    }
+                    else if (indent > currentIndent && currentBlock != null)
+                    {
+                        var keyValue = trimmedLine.Split('=');
+                        if (keyValue.Length == 2)
+                        {
+                            currentBlock.Keys[keyValue[0].Trim()] = ParseValue(keyValue[1].Trim());
+                        }
+                    }
+                }
+                return config;
+            }
+
         }
 
         public class BlockBuilder
@@ -150,10 +210,10 @@ namespace SimpleConfig
 
     public class Config
     {
-        public static Config Deserialize(string content)
-        {
-            return Deserializer.Parse(content);
-        }
+        //public static Config Deserialize(string content)
+        //{
+        //    return Deserializer.Parse(content);
+        //}
 
         public Dictionary<string, object> Assignments { get; } = new Dictionary<string, object>();
         public List<ConfigBlock> Blocks { get; } = new List<ConfigBlock>();
