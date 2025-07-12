@@ -1,289 +1,156 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace SimpleConfig
 {
-    public class SimpleConfig
+    /// <summary>
+    /// Proporciona métodos para parsear texto en formato SimpleConfig.
+    /// </summary>
+    public static class SimpleConfigParser
     {
-        public class ConfigBuilder
+        // Regex para identificar los componentes de una línea
+        private static readonly Regex CommentRegex = new(@"^\s*(#|//).*"); // Comentarios
+        private static readonly Regex BlockRegex = new(@"^\s*(?<name>[a-zA-Z0-9_.]+)(\s+(?<id>[a-zA-Z0-9_.]+))?:\s*$"); // Bloques: NAME: o NAME id:
+        private static readonly Regex KeyValueRegex = new(@"^\s*(?<key>[a-zA-Z0-9_.]+)\s*=\s*(?<value>.*)\s*$"); // Clave-valor: key = value
+
+        /// <summary>
+        /// Parsea una cadena de texto en formato SimpleConfig y la convierte en un diccionario anidado.
+        /// </summary>
+        /// <param name="content">El contenido del archivo de configuración.</param>
+        /// <returns>Un diccionario que representa la configuración.</returns>
+        /// <exception cref="FormatException">Lanzada si se encuentra un error de sintaxis.</exception>
+        public static Dictionary<string, object> Parse(string content)
         {
-            private readonly Dictionary<string, object> _assignments = new();
-            private readonly List<ConfigBlock> _blocks = new();
+            var root = new Dictionary<string, object>();
+            var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.None);
 
-            public ConfigBuilder AddAssignment(string key, object value)
+            // Pilas para manejar el anidamiento de bloques
+            var scopeStack = new Stack<Dictionary<string, object>>();
+            var indentStack = new Stack<int>();
+
+            scopeStack.Push(root);
+            indentStack.Push(-1); // Nivel base para la raíz del documento
+
+            for (int i = 0; i < lines.Length; i++)
             {
-                if (!IsValidType(value))
-                    throw new ArgumentException("Tipo de dato no soportado: " + value.GetType().Name);
+                var line = lines[i];
 
-                _assignments[key] = FormatValue(value);
-                return this;
-            }
-
-            public ConfigBuilder AddBlock(string name, Action<BlockBuilder> buildAction)
-            {
-                var blockBuilder = new BlockBuilder();
-                buildAction(blockBuilder);
-                _blocks.Add(new ConfigBlock
+                // Ignorar comentarios y líneas vacías
+                if (string.IsNullOrWhiteSpace(line) || CommentRegex.IsMatch(line))
                 {
-                    Name = name,
-                    Keys = blockBuilder.GetValues()
-                });
-                return this;
-            }
-
-            public string Build()
-            {
-                var sb = new StringBuilder();
-                SerializeBlock(sb, 0);
-                return sb.ToString();
-            }
-
-            private void SerializeBlock(StringBuilder sb, int indentLevel)
-            {
-                foreach (var assignment in _assignments)
-                {
-                    sb.AppendLine($"{new string(' ', indentLevel * 2)}SET {assignment.Key} = {assignment.Value}");
+                    continue;
                 }
 
-                foreach (var block in _blocks)
+                var indent = line.TakeWhile(char.IsWhiteSpace).Count();
+
+                // Salir de los bloques si la sangría disminuye
+                while (indent <= indentStack.Peek())
                 {
-                    sb.AppendLine($"{new string(' ', indentLevel * 2)}{block.Name}:");
-                    SerializeKeyValuePairs(block.Keys, sb, indentLevel + 1);
+                    indentStack.Pop();
+                    scopeStack.Pop();
                 }
-            }
 
-            private void SerializeKeyValuePairs(Dictionary<string, object> values, StringBuilder sb, int indentLevel)
-            {
-                foreach (var kvp in values)
-                {
-                    if (kvp.Value is Dictionary<string, object> nestedBlock)
-                    {
-                        sb.AppendLine($"{new string(' ', indentLevel * 2)}{kvp.Key}:");
-                        SerializeKeyValuePairs(nestedBlock, sb, indentLevel + 1);
-                    }
-                    else
-                    {
-                        sb.AppendLine($"{new string(' ', indentLevel * 2)}{kvp.Key} = {kvp.Value}");
-                    }
-                }
-            }
-
-            public string Serialize()
-            {
-                var sb = new StringBuilder();
-
-                foreach (var assignment in _assignments)
-                {
-                    sb.AppendLine($"SET {assignment.Key} = {assignment.Value}");
-                }
-                foreach (var block in _blocks)
-                {
-                    sb.AppendLine($"{block.Name}:");
-                    foreach (var key in block.Keys)
-                    {
-                        sb.AppendLine($"  {key.Key} = {key.Value}");
-                    }
-                }
-                return sb.ToString();
-            }
-
-            public Dictionary<string, object> Assignments => _assignments;
-            public List<ConfigBlock> Blocks => _blocks;
-
-            public static bool IsValidType(object value)
-            {
-                return value is string || value is bool || value is int || value is double || value is Action<BlockBuilder>;
-            }
-
-            public static string FormatValue(object value)
-            {
-                if (value is string str)
-                    return $"\"{str}\"";
-
-                if (value is bool b)
-                    return b ? "true" : "false";
-
-                return value.ToString().ToLower();
-            }
-
-            private static object ParseValue(string value)
-            {
-                if (value.StartsWith("\"") && value.EndsWith("\""))
-                    return value.Substring(1, value.Length - 2);
-
-                if (bool.TryParse(value, out bool boolResult))
-                    return boolResult;
-
-                if (int.TryParse(value, out int intResult))
-                    return intResult;
-
-                if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double doubleResult))
-                    return doubleResult;
-
-                return value;
-            }
-
-            public static Config Parse(string content)
-            {
-                var config = new Config();
-                var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                ConfigBlock currentBlock = null;
-                int currentIndent = 0;
-
-                foreach (var line in lines)
-                {
-                    var trimmedLine = line.Trim();
-                    if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
-
-                    int indent = line.TakeWhile(c => c == ' ').Count() / 2;
-
-                    if (trimmedLine.StartsWith("SET "))
-                    {
-                        var parts = trimmedLine.Substring(4).Split('=');
-                        if (parts.Length == 2)
-                        {
-                            var key = parts[0].Trim();
-                            var value = ParseValue(parts[1].Trim());
-                            config.Assignments[key] = value;
-                        }
-                    }
-                    else if (trimmedLine.EndsWith(":"))
-                    {
-                        currentBlock = new ConfigBlock { Name = trimmedLine.TrimEnd(':') };
-                        config.Blocks.Add(currentBlock);
-                        currentIndent = indent;
-                    }
-                    else if (indent > currentIndent && currentBlock != null)
-                    {
-                        var keyValue = trimmedLine.Split('=');
-                        if (keyValue.Length == 2)
-                        {
-                            currentBlock.Keys[keyValue[0].Trim()] = ParseValue(keyValue[1].Trim());
-                        }
-                    }
-                }
-                return config;
-            }
-
-        }
-
-        public class BlockBuilder
-        {
-            private readonly Dictionary<string, object> _values = new();
-
-            public BlockBuilder Add(string key, object value)
-            {
-                if (value is Dictionary<string, object> dict)
-                {
-                    _values[key] = dict;
-                }
-                else
-                {
-                    _values[key] = FormatValue(value);
-                }
-                return this;
-            }
-
-            public BlockBuilder Add(string key, Func<BlockBuilder, object> nestedBlock)
-            {
-                var builder = new BlockBuilder();
-                nestedBlock(builder);
-                _values[key] = builder.GetValues();
-                return this;
-            }
-
-            public Dictionary<string, object> GetValues() => _values;
-        }
-
-        private static string FormatValue(object value)
-        {
-            return value switch
-            {
-                string s => $"\"{s}\"",
-                bool b => b ? "true" : "false",
-                _ => value.ToString().ToLower()
-            };
-        }
-    }
-
-    public class Config
-    {
-        //public static Config Deserialize(string content)
-        //{
-        //    return Deserializer.Parse(content);
-        //}
-
-        public Dictionary<string, object> Assignments { get; } = new Dictionary<string, object>();
-        public List<ConfigBlock> Blocks { get; } = new List<ConfigBlock>();
-    }
-
-    public class ConfigBlock
-    {
-        public Dictionary<string, object> Keys { get; set; } = new Dictionary<string, object>();
-        public string Name { get; set; }
-    }
-
-    public class Deserializer
-    {
-        public static Config Parse(string content)
-        {
-            var config = new Config();
-            var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            ConfigBlock currentBlock = null;
-            int currentIndent = 0;
-
-            foreach (var line in lines)
-            {
+                var currentScope = scopeStack.Peek();
                 var trimmedLine = line.Trim();
-                if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
 
-                int indent = line.TakeWhile(c => c == ' ').Count() / 2;
+                // Intentar parsear como un bloque (NAME:)
+                var blockMatch = BlockRegex.Match(trimmedLine);
+                if (blockMatch.Success)
+                {
+                    var blockName = blockMatch.Groups["name"].Value;
+                    var blockId = blockMatch.Groups["id"].Value;
+                    var newBlock = new Dictionary<string, object>();
 
-                if (trimmedLine.StartsWith("SET "))
-                {
-                    var parts = trimmedLine.Substring(4).Split('=');
-                    if (parts.Length == 2)
+                    if (!string.IsNullOrEmpty(blockId)) // Bloque con identificador (SERVER frontend:)
                     {
-                        var key = parts[0].Trim();
-                        var value = ParseValue(parts[1].Trim());
-                        config.Assignments[key] = value;
+                        if (!currentScope.ContainsKey(blockName))
+                        {
+                            currentScope[blockName] = new Dictionary<string, object>();
+                        }
+
+                        if (currentScope[blockName] is Dictionary<string, object> parentBlock)
+                        {
+                            parentBlock[blockId] = newBlock;
+                        }
+                        else
+                        {
+                            throw new FormatException($"Error en la línea {i + 1}: La clave '{blockName}' ya existe y no es un bloque agrupador.");
+                        }
                     }
-                }
-                else if (trimmedLine.EndsWith(":"))
-                {
-                    currentBlock = new ConfigBlock { Name = trimmedLine.TrimEnd(':') };
-                    config.Blocks.Add(currentBlock);
-                    currentIndent = indent;
-                }
-                else if (indent > currentIndent && currentBlock != null)
-                {
-                    var keyValue = trimmedLine.Split('=');
-                    if (keyValue.Length == 2)
+                    else // Bloque simple (OWNER:)
                     {
-                        currentBlock.Keys[keyValue[0].Trim()] = ParseValue(keyValue[1].Trim());
+                        currentScope[blockName] = newBlock;
                     }
+
+                    scopeStack.Push(newBlock);
+                    indentStack.Push(indent);
+                    continue;
                 }
+
+                // Intentar parsear como clave-valor (key = value)
+                var keyValueMatch = KeyValueRegex.Match(trimmedLine);
+                if (keyValueMatch.Success)
+                {
+                    var key = keyValueMatch.Groups["key"].Value;
+                    var valueStr = keyValueMatch.Groups["value"].Value;
+                    currentScope[key] = ParseValue(valueStr);
+                    continue;
+                }
+
+                // Si no coincide con ninguna regla, es un error de sintaxis
+                throw new FormatException($"Error de sintaxis en la línea {i + 1}: '{line}'");
             }
-            return config;
+
+            return root;
         }
 
+        /// <summary>
+        /// Parsea el string de un valor y lo convierte al tipo de dato correspondiente.
+        /// </summary>
         private static object ParseValue(string value)
         {
-            if (value.StartsWith("\"") && value.EndsWith("\""))
-                return value.Substring(1, value.Length - 2);
+            var trimmedValue = value.Trim();
 
-            if (bool.TryParse(value, out bool boolResult))
+            // 1. Intentar parsear como lista (si contiene comas)
+            if (trimmedValue.Contains(','))
+            {
+                // Regex para separar por comas, respetando los valores entre comillas
+                var listItems = Regex.Split(trimmedValue, @",(?=(?:[^""]*""[^""]*"")*[^""]*$)")
+                    .Select(item => ParseValue(item.Trim())) // Parsea cada elemento recursivamente
+                    .ToList();
+                return listItems;
+            }
+
+            // 2. String (entre comillas)
+            if (trimmedValue.StartsWith("\"") && trimmedValue.EndsWith("\""))
+                return trimmedValue.Substring(1, trimmedValue.Length - 2);
+
+            // 3. Null
+            if (trimmedValue == "null")
+                return null;
+
+            // 4. Booleano
+            if (bool.TryParse(trimmedValue, out bool boolResult))
                 return boolResult;
 
-            if (int.TryParse(value, out int intResult))
-                return intResult;
+            // 5. Número (entero o decimal)
+            if (long.TryParse(trimmedValue, NumberStyles.Any, CultureInfo.InvariantCulture, out long longResult))
+                return longResult;
 
-            if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double doubleResult))
+            if (double.TryParse(trimmedValue, NumberStyles.Any, CultureInfo.InvariantCulture, out double doubleResult))
                 return doubleResult;
 
-            return value;
+            // 6. Fecha (ISO 8601)
+            if (DateTimeOffset.TryParse(trimmedValue, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dateResult))
+                return dateResult;
+
+            // Si no es ninguno de los anteriores, se devuelve como string (para valores sin comillas que no son otros tipos)
+            // Esto es un fallback, según la especificación estricta, los strings siempre llevan comillas.
+            // Se podría lanzar un error aquí si se desea ser más estricto.
+            return trimmedValue;
         }
     }
 }
