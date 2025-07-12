@@ -59,22 +59,7 @@ namespace SimpleConfig
             }
 
 
-            private static object ParseValue(string value)
-            {
-                if (value.StartsWith("\"") && value.EndsWith("\""))
-                    return value.Substring(1, value.Length - 2);
 
-                if (bool.TryParse(value, out bool boolResult))
-                    return boolResult;
-
-                if (int.TryParse(value, out int intResult))
-                    return intResult;
-
-                if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double doubleResult))
-                    return doubleResult;
-
-                return value;
-            }
 
         }
 
@@ -108,6 +93,36 @@ namespace SimpleConfig
 
         private static string FormatValue(object value)
         {
+            //si el value es una lista por ejemplo new[] { 5432, 5433 } debe ser convertido a "5432, 5433"
+            //determinar el tipo de objeto
+            var type = value.GetType().Name;
+            if (value is Int32[] enumerable)
+            {
+                return string.Join(", ", enumerable);
+            }
+            //soportar las listas mistas new object[] {"localhost ok", 5432, "433", 24.5 }
+            if (value is object[] array)
+            {
+                var returnValue = "";
+                for (int i = 0; i < array.Length; i++)
+                {
+                    var item = array[i];
+                    if (item is string)
+                    {
+                        returnValue += $"\"{item}\"";
+                    }
+                    else
+                    {
+                        returnValue += $"{item}";
+                    }
+                    if (i < array.Length - 1) // si no es el último elemento, agrega una coma
+                    {
+                        returnValue += ", ";
+                    }
+                }
+                return returnValue;
+            }
+
             return value switch
             {
                 string s => $"\"{s}\"",
