@@ -8,7 +8,7 @@ var config = new ConfigBuilder()
         .Add("port", 5432)
         .Add("listaports", new[] { 5432, 5433 })
         .Add("listamixta", new object[] {"localhost ok", 5432, "433", 24.5 })
-        .Add("credentials", cred => cred
+        .Add("credentials", cred => cred // Bloque anidado
             .Add("user", "admin")
             .Add("password", "secret")))
     .AddBlock("LOGGING", log => log
