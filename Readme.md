@@ -15,18 +15,8 @@
 
 ---
 
-## 2. Asignaciones individuales
-- Para valores sueltos en la raíz se utiliza `SET nombre = valor`.
-- `SET` es opcional dentro de un bloque.
 
-```plaintext
-SET title = "SimpleConfig Example"
-SET version = 1.0
-```
-
----
-
-## 3. Bloques
+## 2. Bloques
 - Los bloques se declaran con `NOMBRE_BLOQUE:`.
 - También pueden tener un identificador: `NOMBRE_BLOQUE identificador:`.
 
@@ -44,7 +34,7 @@ Reglas:
 
 ---
 
-## 4. Sangría y agrupación
+## 3. Sangría y agrupación
 - La sangría es opcional, usada solo para claridad visual.
 - Un bloque finaliza al iniciar otro bloque o al terminar el archivo.
 
@@ -56,11 +46,11 @@ dob = 1980-01-01
 
 ---
 
-## 5. Tipos de valores
+## 4. Tipos de valores
 
 | Tipo     | Ejemplo                               | Notas                                     |
 |----------|---------------------------------------|-------------------------------------------|
-| String   | "texto"                               | Comillas necesarias si hay espacios       |
+| String   | "texto" "texto con comillas" "texto_1" | Comillas son obligatorias       |
 | Número  | 123, 3.14                              | Enteros o decimales                      |
 | Booleano | true, false                           | Siempre en minúsculas                   |
 | Fecha    | 1979-05-27T07:32:00-08:00             | ISO 8601                                  |
@@ -68,18 +58,19 @@ dob = 1980-01-01
 
 ---
 
-## 6. Listas
+## 5. Listas
 - Listas se separan por comas.
 - No requiere corchetes `[]`.
 
 ```plaintext
 ports = 8000,8001,8002
 names = "Tom","Jerry","Spike"
+mixto = 1,"dos",true
 ```
 
 ---
 
-## 7. Sub-bloques (anidamiento)
+## 6. Sub-bloques (anidamiento)
 - Un sub-bloque se declara dentro de un bloque superior con `nombre_subbloque:`.
 
 ```plaintext
@@ -91,7 +82,7 @@ DATABASE:
 
 ---
 
-## 8. Reglas adicionales
+## 7. Reglas adicionales
 - **Nombres**: letras, números, `_` y `.` permitidos.
 - **Identificadores**: interpretados como atributos si existen (`SERVER alpha:`).
 - **Errores**: cualquier línea fuera de un contexto válido es error de sintaxis.
@@ -103,8 +94,8 @@ DATABASE:
 ```plaintext
 # Configuración de ejemplo
 
-SET title = "Mi Aplicación"
-SET version = 1.2
+title = "Mi Aplicación"
+version = 1.2
 
 OWNER:
   name = "Jhobanny"

@@ -9,17 +9,9 @@ namespace SimpleConfig
     {
         public class ConfigBuilder
         {
-            private readonly Dictionary<string, object> _assignments = new();
+
             private readonly List<ConfigBlock> _blocks = new();
 
-            public ConfigBuilder AddAssignment(string key, object value)
-            {
-                if (!IsValidType(value))
-                    throw new ArgumentException("Tipo de dato no soportado: " + value.GetType().Name);
-
-                _assignments[key] = FormatValue(value);
-                return this;
-            }
 
             public ConfigBuilder AddBlock(string name, Action<BlockBuilder> buildAction)
             {
@@ -42,10 +34,6 @@ namespace SimpleConfig
 
             private void SerializeBlock(StringBuilder sb, int indentLevel)
             {
-                foreach (var assignment in _assignments)
-                {
-                    sb.AppendLine($"{new string(' ', indentLevel * 2)}SET {assignment.Key} = {assignment.Value}");
-                }
 
                 foreach (var block in _blocks)
                 {
@@ -70,43 +58,6 @@ namespace SimpleConfig
                 }
             }
 
-            public string Serialize()
-            {
-                var sb = new StringBuilder();
-
-                foreach (var assignment in _assignments)
-                {
-                    sb.AppendLine($"SET {assignment.Key} = {assignment.Value}");
-                }
-                foreach (var block in _blocks)
-                {
-                    sb.AppendLine($"{block.Name}:");
-                    foreach (var key in block.Keys)
-                    {
-                        sb.AppendLine($"  {key.Key} = {key.Value}");
-                    }
-                }
-                return sb.ToString();
-            }
-
-            public Dictionary<string, object> Assignments => _assignments;
-            public List<ConfigBlock> Blocks => _blocks;
-
-            public static bool IsValidType(object value)
-            {
-                return value is string || value is bool || value is int || value is double || value is Action<BlockBuilder>;
-            }
-
-            public static string FormatValue(object value)
-            {
-                if (value is string str)
-                    return $"\"{str}\"";
-
-                if (value is bool b)
-                    return b ? "true" : "false";
-
-                return value.ToString().ToLower();
-            }
 
             private static object ParseValue(string value)
             {
@@ -123,48 +74,6 @@ namespace SimpleConfig
                     return doubleResult;
 
                 return value;
-            }
-
-            public static Config Parse(string content)
-            {
-                var config = new Config();
-                var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                ConfigBlock currentBlock = null;
-                int currentIndent = 0;
-
-                foreach (var line in lines)
-                {
-                    var trimmedLine = line.Trim();
-                    if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
-
-                    int indent = line.TakeWhile(c => c == ' ').Count() / 2;
-
-                    if (trimmedLine.StartsWith("SET "))
-                    {
-                        var parts = trimmedLine.Substring(4).Split('=');
-                        if (parts.Length == 2)
-                        {
-                            var key = parts[0].Trim();
-                            var value = ParseValue(parts[1].Trim());
-                            config.Assignments[key] = value;
-                        }
-                    }
-                    else if (trimmedLine.EndsWith(":"))
-                    {
-                        currentBlock = new ConfigBlock { Name = trimmedLine.TrimEnd(':') };
-                        config.Blocks.Add(currentBlock);
-                        currentIndent = indent;
-                    }
-                    else if (indent > currentIndent && currentBlock != null)
-                    {
-                        var keyValue = trimmedLine.Split('=');
-                        if (keyValue.Length == 2)
-                        {
-                            currentBlock.Keys[keyValue[0].Trim()] = ParseValue(keyValue[1].Trim());
-                        }
-                    }
-                }
-                return config;
             }
 
         }
@@ -210,12 +119,6 @@ namespace SimpleConfig
 
     public class Config
     {
-        //public static Config Deserialize(string content)
-        //{
-        //    return Deserializer.Parse(content);
-        //}
-
-        public Dictionary<string, object> Assignments { get; } = new Dictionary<string, object>();
         public List<ConfigBlock> Blocks { get; } = new List<ConfigBlock>();
     }
 
@@ -241,17 +144,7 @@ namespace SimpleConfig
 
                 int indent = line.TakeWhile(c => c == ' ').Count() / 2;
 
-                if (trimmedLine.StartsWith("SET "))
-                {
-                    var parts = trimmedLine.Substring(4).Split('=');
-                    if (parts.Length == 2)
-                    {
-                        var key = parts[0].Trim();
-                        var value = ParseValue(parts[1].Trim());
-                        config.Assignments[key] = value;
-                    }
-                }
-                else if (trimmedLine.EndsWith(":"))
+                if (trimmedLine.EndsWith(":"))
                 {
                     currentBlock = new ConfigBlock { Name = trimmedLine.TrimEnd(':') };
                     config.Blocks.Add(currentBlock);
