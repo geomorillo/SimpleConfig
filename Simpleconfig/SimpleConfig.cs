@@ -140,7 +140,9 @@ namespace SimpleConfig
             foreach (var line in lines)
             {
                 var trimmedLine = line.Trim();
-                if (string.IsNullOrWhiteSpace(trimmedLine)) continue;
+                // Ignorar líneas en blanco o comentarios según la especificación
+                if (string.IsNullOrWhiteSpace(trimmedLine) || trimmedLine.StartsWith("#") || trimmedLine.StartsWith("//"))
+                    continue;
 
                 int indent = line.TakeWhile(c => c == ' ').Count() / 2;
 
